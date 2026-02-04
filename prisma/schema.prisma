@@ -1,0 +1,286 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum EstadoProducto {
+  ACTIVO
+  OCULTO
+  ARCHIVADO
+}
+
+enum PlataformaVideo {
+  INSTAGRAM
+  TIKTOK
+}
+
+enum OrigenLead {
+  INICIO
+  CATALOGO
+  DETALLE_PRODUCTO
+  OTRO
+}
+
+model Producto {
+  id          Int            @id @default(autoincrement())
+  nombre      String
+  slug        String         @unique
+  descripcion String?
+  estado      EstadoProducto @default(ACTIVO)
+
+  // Precio base opcional (si no usas PrecioProducto)
+  precioBase Decimal? @db.Decimal(10, 2)
+
+  // relaciones
+  imagenes      ImagenProducto[]
+  videos        VideoProducto[]
+  variantes     VarianteProducto[]
+  precio        PrecioProducto?
+  insignias     ProductoInsignia[]
+  categorias    ProductoCategoria[]
+  colecciones   ProductoColeccion[]
+  leadsWhatsApp LeadWhatsApp[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([estado])
+  @@index([nombre])
+  @@map("producto")
+}
+
+model ImagenProducto {
+  id          Int      @id @default(autoincrement())
+  producto_id Int
+  producto    Producto @relation(fields: [producto_id], references: [id], onDelete: Cascade)
+
+  url   String
+  alt   String?
+  orden Int     @default(0)
+
+  // "principal" | "hover" | "galeria"
+  tipo String?
+
+  createdAt DateTime @default(now())
+
+  @@index([producto_id, orden])
+  @@map("imagen_producto")
+}
+
+model VideoProducto {
+  id          Int      @id @default(autoincrement())
+  producto_id Int
+  producto    Producto @relation(fields: [producto_id], references: [id], onDelete: Cascade)
+
+  plataforma PlataformaVideo
+  url        String
+  etiqueta   String?
+  orden      Int             @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([producto_id, orden])
+  @@map("video_producto")
+}
+
+model Categoria {
+  id     Int     @id @default(autoincrement())
+  nombre String
+  slug   String  @unique
+  orden  Int     @default(0)
+  activo Boolean @default(true)
+
+  productos ProductoCategoria[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo, orden])
+  @@map("categoria")
+}
+
+model Coleccion {
+  id            Int       @id @default(autoincrement())
+  nombre        String
+  slug          String    @unique
+  descripcion   String?
+  imagenPortada String?
+  iniciaEn      DateTime?
+  terminaEn     DateTime?
+  activo        Boolean   @default(true)
+
+  productos ProductoColeccion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo])
+  @@map("coleccion")
+}
+
+model ProductoCategoria {
+  producto_id  Int
+  categoria_id Int
+
+  producto  Producto  @relation(fields: [producto_id], references: [id], onDelete: Cascade)
+  categoria Categoria @relation(fields: [categoria_id], references: [id], onDelete: Cascade)
+
+  asignadoEn DateTime @default(now())
+
+  @@id([producto_id, categoria_id])
+  @@index([categoria_id])
+  @@map("producto_categoria")
+}
+
+model ProductoColeccion {
+  producto_id  Int
+  coleccion_id Int
+
+  producto  Producto  @relation(fields: [producto_id], references: [id], onDelete: Cascade)
+  coleccion Coleccion @relation(fields: [coleccion_id], references: [id], onDelete: Cascade)
+
+  asignadoEn DateTime @default(now())
+
+  @@id([producto_id, coleccion_id])
+  @@index([coleccion_id])
+  @@map("producto_coleccion")
+}
+
+model Talla {
+  id       Int     @id @default(autoincrement())
+  etiqueta String  @unique // S, M, L
+  orden    Int     @default(0)
+  activo   Boolean @default(true)
+
+  variantes VarianteProducto[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo, orden])
+  @@map("talla")
+}
+
+model Color {
+  id     Int     @id @default(autoincrement())
+  nombre String  @unique // Negro, Blanco, Rosado
+  hex    String?
+  activo Boolean @default(true)
+
+  variantes VarianteProducto[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo])
+  @@map("color")
+}
+
+model VarianteProducto {
+  id          Int      @id @default(autoincrement())
+  producto_id Int
+  producto    Producto @relation(fields: [producto_id], references: [id], onDelete: Cascade)
+
+  talla_id Int
+  talla    Talla @relation(fields: [talla_id], references: [id])
+
+  color_id Int
+  color    Color @relation(fields: [color_id], references: [id])
+
+  sku String? @unique
+
+  // Si una variante cambia precio; si no, null
+  precio Decimal? @db.Decimal(10, 2)
+
+  // stock opcional
+  stock  Int?
+  activo Boolean @default(true)
+
+  leadsWhatsApp LeadWhatsApp[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([producto_id, talla_id, color_id])
+  @@index([producto_id, activo])
+  @@map("variante_producto")
+}
+
+model PrecioProducto {
+  producto_id Int      @id
+  producto    Producto @relation(fields: [producto_id], references: [id], onDelete: Cascade)
+
+  precioOriginal      Decimal  @db.Decimal(10, 2)
+  porcentajeDescuento Int      @default(0) // 0..100
+  precioOferta        Decimal? @db.Decimal(10, 2)
+
+  iniciaEn  DateTime?
+  terminaEn DateTime?
+  activo    Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo])
+  @@map("precio_producto")
+}
+
+model Insignia {
+  id     Int     @id @default(autoincrement())
+  nombre String // "HOT", "TOP", "OFERTA", "NUEVO", "TENDENCIA"
+  slug   String  @unique
+  color  String?
+  activo Boolean @default(true)
+
+  productos ProductoInsignia[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo])
+  @@map("insignia")
+}
+
+model ProductoInsignia {
+  producto_id Int
+  insignia_id Int
+
+  producto Producto @relation(fields: [producto_id], references: [id], onDelete: Cascade)
+  insignia Insignia @relation(fields: [insignia_id], references: [id], onDelete: Cascade)
+
+  asignadoEn DateTime @default(now())
+
+  @@id([producto_id, insignia_id])
+  @@index([insignia_id])
+  @@map("producto_insignia")
+}
+
+model LeadWhatsApp {
+  id Int @id @default(autoincrement())
+
+  producto_id Int
+  producto    Producto @relation(fields: [producto_id], references: [id], onDelete: Cascade)
+
+  variante_id Int?
+  variante    VarianteProducto? @relation(fields: [variante_id], references: [id], onDelete: SetNull)
+
+  telefono String?
+  mensaje  String
+  origen   OrigenLead @default(DETALLE_PRODUCTO)
+
+  createdAt DateTime @default(now())
+
+  @@index([producto_id, createdAt])
+  @@index([origen, createdAt])
+  @@map("lead")
+}
