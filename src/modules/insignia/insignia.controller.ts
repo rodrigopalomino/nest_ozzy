@@ -1,22 +1,22 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
-import { TallaService } from './talla.service';
-import { CreateTallaDto } from './dto/createTalla.dto';
+import { InsigniaService } from './insignia.service';
 import { QueryOptionsSchemaType } from 'src/common/schema/query-options.schema';
+import { CreateInsigniaDto } from './dto/createInsignia.dto';
 
 @Controller('talla')
-export class TallaController {
+export class InsigniaController {
   // ===================================================================================
-  constructor(private readonly tallaService: TallaService) {}
+  constructor(private readonly insigniaService: InsigniaService) {}
 
   // ===================================================================================
   @Get()
   getTallas(@Query() options: QueryOptionsSchemaType) {
-    return this.tallaService.getTallas(options);
+    return this.insigniaService.getInsignias(options);
   }
 
   // ===================================================================================
   @Post()
-  createTalla(@Body() dto: CreateTallaDto) {
-    return this.tallaService.createTalla(dto);
+  createTalla(@Body() dto: CreateInsigniaDto) {
+    return this.insigniaService.createInsignia(dto);
   }
 }

@@ -97,7 +97,6 @@ model Categoria {
   id     Int     @id @default(autoincrement())
   nombre String
   slug   String  @unique
-  orden  Int     @default(0)
   activo Boolean @default(true)
 
   productos ProductoCategoria[]
@@ -105,7 +104,7 @@ model Categoria {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([activo, orden])
+  @@index([activo])
   @@map("categoria")
 }
 
@@ -159,7 +158,6 @@ model ProductoColeccion {
 model Talla {
   id       Int     @id @default(autoincrement())
   etiqueta String  @unique // S, M, L
-  orden    Int     @default(0)
   activo   Boolean @default(true)
 
   variantes VarianteProducto[]
@@ -167,7 +165,7 @@ model Talla {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([activo, orden])
+  @@index([activo])
   @@map("talla")
 }
 
