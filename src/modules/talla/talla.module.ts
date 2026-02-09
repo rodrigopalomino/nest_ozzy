@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { TallaController } from './talla.controller';
 import { TallaService } from './talla.service';
+import { TallaController } from './talla.controller';
 
 @Module({
   controllers: [TallaController],
-  providers: [TallaService]
+  providers: [TallaService],
 })
 export class TallaModule {}

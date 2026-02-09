@@ -1,12 +1,4 @@
-// src/color/dto/create-color.dto.ts
-import { IsNotEmpty, IsString } from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import { CreateCategoriaSchema } from '../schema/createCategoria.schema';
 
-export class CreateCategoriaDto {
-  @IsString()
-  @IsNotEmpty()
-  nombre!: string;
-
-  @IsString()
-  @IsNotEmpty()
-  slug!: string;
-}
+export class CreateCategoriaDto extends createZodDto(CreateCategoriaSchema) {}

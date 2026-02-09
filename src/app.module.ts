@@ -7,6 +7,8 @@ import { CategoriaModule } from './modules/categoria/categoria.module';
 import { InsigniaModule } from './modules/insignia/insignia.module';
 import { MinioModule } from './modules/minio/minio.module';
 import { ProductoModule } from './modules/producto/producto.module';
+import { ColeccionModule } from './modules/coleccion/coleccion.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { ProductoModule } from './modules/producto/producto.module';
     InsigniaModule,
     MinioModule,
     ProductoModule,
+    ColeccionModule,
+    AuthModule,
   ],
 })
 export class AppModule {}

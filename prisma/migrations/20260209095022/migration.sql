@@ -1,4 +1,19 @@
 -- CreateTable
+CREATE TABLE `usuario` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `username` VARCHAR(191) NOT NULL,
+    `password_hash` VARCHAR(191) NOT NULL,
+    `activo` BOOLEAN NOT NULL DEFAULT true,
+    `rol` ENUM('ADMIN', 'STAFF') NOT NULL DEFAULT 'ADMIN',
+    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updated_at` DATETIME(3) NOT NULL,
+
+    UNIQUE INDEX `usuario_username_key`(`username`),
+    INDEX `usuario_activo_idx`(`activo`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
 CREATE TABLE `producto` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `nombre` VARCHAR(191) NOT NULL,
@@ -22,10 +37,13 @@ CREATE TABLE `imagen_producto` (
     `url` VARCHAR(191) NOT NULL,
     `alt` VARCHAR(191) NULL,
     `orden` INTEGER NOT NULL DEFAULT 0,
-    `tipo` VARCHAR(191) NULL,
+    `esPrincipal` BOOLEAN NOT NULL DEFAULT false,
+    `esHover` BOOLEAN NOT NULL DEFAULT false,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     INDEX `imagen_producto_producto_id_orden_idx`(`producto_id`, `orden`),
+    INDEX `imagen_producto_producto_id_esPrincipal_idx`(`producto_id`, `esPrincipal`),
+    INDEX `imagen_producto_producto_id_esHover_idx`(`producto_id`, `esHover`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -48,13 +66,12 @@ CREATE TABLE `categoria` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `nombre` VARCHAR(191) NOT NULL,
     `slug` VARCHAR(191) NOT NULL,
-    `orden` INTEGER NOT NULL DEFAULT 0,
     `activo` BOOLEAN NOT NULL DEFAULT true,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
     UNIQUE INDEX `categoria_slug_key`(`slug`),
-    INDEX `categoria_activo_orden_idx`(`activo`, `orden`),
+    INDEX `categoria_activo_idx`(`activo`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -100,13 +117,12 @@ CREATE TABLE `producto_coleccion` (
 CREATE TABLE `talla` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `etiqueta` VARCHAR(191) NOT NULL,
-    `orden` INTEGER NOT NULL DEFAULT 0,
     `activo` BOOLEAN NOT NULL DEFAULT true,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
     UNIQUE INDEX `talla_etiqueta_key`(`etiqueta`),
-    INDEX `talla_activo_orden_idx`(`activo`, `orden`),
+    INDEX `talla_activo_idx`(`activo`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 

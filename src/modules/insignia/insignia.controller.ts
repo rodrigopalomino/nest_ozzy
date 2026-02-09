@@ -1,22 +1,41 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
-import { InsigniaService } from './insignia.service';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { QueryOptionsSchemaType } from 'src/common/schema/query-options.schema';
+import { InsigniaService } from './insignia.service';
 import { CreateInsigniaDto } from './dto/createInsignia.dto';
+import { UpdateInsigniaDto } from './dto/updateInsignia.dto';
 
-@Controller('talla')
+@Controller('insignia')
 export class InsigniaController {
   // ===================================================================================
   constructor(private readonly insigniaService: InsigniaService) {}
 
   // ===================================================================================
   @Get()
-  getTallas(@Query() options: QueryOptionsSchemaType) {
+  getCategorias(@Query() options: QueryOptionsSchemaType) {
     return this.insigniaService.getInsignias(options);
   }
 
   // ===================================================================================
   @Post()
-  createTalla(@Body() dto: CreateInsigniaDto) {
+  createCategoria(@Body() dto: CreateInsigniaDto) {
     return this.insigniaService.createInsignia(dto);
+  }
+
+  // ===================================================================================
+  @Patch(':id')
+  updateCategoria(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateInsigniaDto,
+  ) {
+    return this.insigniaService.updateInsignia(id, dto);
   }
 }

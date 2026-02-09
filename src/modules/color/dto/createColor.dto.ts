@@ -1,11 +1,4 @@
-// src/color/dto/create-color.dto.ts
-import { IsOptional, IsString } from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import { CreateColorSchema } from '../schema/createColor.schema';
 
-export class CreateColorDto {
-  @IsString()
-  nombre!: string;
-
-  @IsOptional()
-  @IsString()
-  hex?: string;
-}
+export class CreateColorDto extends createZodDto(CreateColorSchema) {}

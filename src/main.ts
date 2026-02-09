@@ -4,6 +4,8 @@ import { ZodValidationPipe } from 'nestjs-zod';
 import { GlobalExceptionFilter } from './common/errors/global-exception.filter';
 import * as qs from 'qs';
 import { NestExpressApplication } from '@nestjs/platform-express';
+// import * as cookieParser from 'cookie-parser';
+import * as cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   // const app = await NestFactory.create(AppModule);
@@ -20,6 +22,8 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
+
+  app.use(cookieParser());
 
   await app.listen(process.env.PORT ?? 3000);
 }

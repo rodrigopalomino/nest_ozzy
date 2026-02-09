@@ -1,7 +1,4 @@
-// src/color/dto/create-color.dto.ts
-import { IsString } from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import { CreateTallaSchema } from '../schema/createTalla.schema';
 
-export class CreateTallaDto {
-  @IsString()
-  etiqueta!: string;
-}
+export class CreateTallaDto extends createZodDto(CreateTallaSchema) {}

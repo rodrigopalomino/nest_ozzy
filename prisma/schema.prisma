@@ -31,6 +31,25 @@ enum OrigenLead {
   OTRO
 }
 
+enum RolUsuario {
+  ADMIN
+  STAFF
+}
+
+model Usuario {
+  id       Int        @id @default(autoincrement())
+  username String     @unique
+  password String     @map("password_hash")
+  activo   Boolean    @default(true)
+  rol      RolUsuario @default(ADMIN)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([activo])
+  @@map("usuario")
+}
+
 model Producto {
   id          Int            @id @default(autoincrement())
   nombre      String
@@ -38,10 +57,8 @@ model Producto {
   descripcion String?
   estado      EstadoProducto @default(ACTIVO)
 
-  // Precio base opcional (si no usas PrecioProducto)
   precioBase Decimal? @db.Decimal(10, 2)
 
-  // relaciones
   imagenes      ImagenProducto[]
   videos        VideoProducto[]
   variantes     VarianteProducto[]
@@ -68,12 +85,14 @@ model ImagenProducto {
   alt   String?
   orden Int     @default(0)
 
-  // "principal" | "hover" | "galeria"
-  tipo String?
+  esPrincipal Boolean @default(false)
+  esHover     Boolean @default(false)
 
   createdAt DateTime @default(now())
 
   @@index([producto_id, orden])
+  @@index([producto_id, esPrincipal])
+  @@index([producto_id, esHover])
   @@map("imagen_producto")
 }
 

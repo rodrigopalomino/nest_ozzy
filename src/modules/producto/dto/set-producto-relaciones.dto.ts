@@ -1,19 +1,6 @@
-// src/modules/producto/dto/set-producto-relaciones.dto.ts
-import { IsArray, IsOptional, IsUUID } from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import { SetProductoRelacionesSchema } from '../schema/set-producto-relaciones.schema';
 
-export class SetProductoRelacionesDto {
-  @IsOptional()
-  @IsArray()
-  @IsUUID('4', { each: true })
-  categoriaIds?: number[];
-
-  @IsOptional()
-  @IsArray()
-  @IsUUID('4', { each: true })
-  coleccionIds?: number[];
-
-  @IsOptional()
-  @IsArray()
-  @IsUUID('4', { each: true })
-  insigniaIds?: number[];
-}
+export class SetProductoRelacionesDto extends createZodDto(
+  SetProductoRelacionesSchema,
+) {}

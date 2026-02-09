@@ -1,5 +1,6 @@
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, RolUsuario } from '@prisma/client';
+import * as argon2 from 'argon2';
 
 function slugify(input: string) {
   return input
@@ -23,6 +24,9 @@ async function main() {
 
   const prisma = new PrismaClient();
 
+  // =========================
+  // CATEGORÍAS
+  // =========================
   const categorias = [
     'Polos',
     'Casacas',
@@ -40,6 +44,9 @@ async function main() {
     });
   }
 
+  // =========================
+  // COLECCIONES
+  // =========================
   const colecciones = ['Drop Enero', 'Street 2026', 'Essential'];
 
   for (const nombre of colecciones) {
@@ -51,6 +58,9 @@ async function main() {
     });
   }
 
+  // =========================
+  // INSIGNIAS
+  // =========================
   const insignias = ['NUEVO', 'OFERTA', 'TOP'];
 
   for (const nombre of insignias) {
@@ -62,12 +72,18 @@ async function main() {
     });
   }
 
+  // =========================
+  // TALLAS
+  // =========================
   const tallas = ['S', 'M', 'L', 'XL'];
   await prisma.talla.createMany({
     data: tallas.map((etiqueta) => ({ etiqueta })),
     skipDuplicates: true,
   });
 
+  // =========================
+  // COLORES
+  // =========================
   const colores = [
     { nombre: 'Negro', hex: '#000000' },
     { nombre: 'Blanco', hex: '#FFFFFF' },
@@ -76,6 +92,23 @@ async function main() {
 
   await prisma.color.createMany({
     data: colores,
+    skipDuplicates: true,
+  });
+
+  // =========================
+  // USUARIO ADMIN (ARGON2 ✅)
+  // =========================
+  const adminPasswordHash = await argon2.hash('admin');
+
+  await prisma.usuario.createMany({
+    data: [
+      {
+        username: 'admin',
+        password: adminPasswordHash, // 🔐 HASH ARGON2
+        activo: true,
+        rol: RolUsuario.ADMIN,
+      },
+    ],
     skipDuplicates: true,
   });
 
