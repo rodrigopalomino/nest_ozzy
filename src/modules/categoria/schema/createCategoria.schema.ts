@@ -6,3 +6,4 @@ export const CreateCategoriaSchema = z.object({
 });
 
 export type CreateCategoriaType = z.infer<typeof CreateCategoriaSchema>;
+//
