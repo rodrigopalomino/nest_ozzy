@@ -3,6 +3,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { MinioService } from 'src/modules/minio/minio.service';
 import crypto from 'crypto';
+import { CoreResponse } from 'src/common/utils/response.util';
 
 @Injectable()
 export class ColeccionImagenService {
@@ -11,28 +12,31 @@ export class ColeccionImagenService {
     private readonly minio: MinioService,
   ) {}
 
-  async presignUpload(coleccionId: number, params: { filename: string }) {
+  async presignUpload(
+    coleccionId: number,
+    params: { filename: string; contentType?: string },
+  ) {
     const coleccion = await this.prisma.coleccion.findUnique({
       where: { id: coleccionId },
       select: { id: true },
     });
     if (!coleccion) throw new NotFoundException('Colección no encontrada');
 
-    const filename = String(params.filename ?? '');
-    const clean = filename.split('?')[0].split('#')[0];
-    const dot = clean.lastIndexOf('.');
-    const ext = dot >= 0 ? clean.slice(dot + 1).toLowerCase() : '';
+    const { extension } = this.minio.validarImagen({
+      filename: String(params.filename ?? ''),
+      contentType: params.contentType,
+    });
 
     const uuid = crypto.randomUUID();
-    const objectKey = `colecciones/${coleccionId}/${uuid}${ext ? `.${ext}` : ''}`;
+    const objectKey = `colecciones/${coleccionId}/${uuid}.${extension}`;
 
     const { uploadUrl } = await this.minio.presignPutObject({ objectKey });
 
-    return {
+    return CoreResponse.success('URL de subida generada correctamente', {
       uploadUrl,
       objectKey,
       url: this.minio.buildPublicUrl(objectKey),
-    };
+    });
   }
 
   /**
@@ -72,7 +76,10 @@ export class ColeccionImagenService {
       await this.tryRemoveFromMinio(prevUrl);
     }
 
-    return updated;
+    return CoreResponse.updated(
+      'Imagen de portada actualizada correctamente',
+      updated,
+    );
   }
 
   /**
@@ -94,22 +101,14 @@ export class ColeccionImagenService {
       await this.tryRemoveFromMinio(coleccion.imagenPortada);
     }
 
-    return { ok: true };
+    return CoreResponse.deleted('Imagen de portada eliminada correctamente');
   }
 
   private async tryRemoveFromMinio(url: string) {
-    try {
-      const bucket = this.minio.getBucket();
-      const needle = `/${bucket}/`;
-      const idx = url.indexOf(needle);
-      if (idx < 0) return;
+    // La limpieza nunca debe romper la operación principal.
+    const objectKey = this.minio.extraerObjectKey(url);
+    if (!objectKey) return;
 
-      const objectKey = url.slice(idx + needle.length).replace(/^\/+/, '');
-      if (!objectKey) return;
-
-      await this.minio.removeObject(objectKey);
-    } catch {
-      // silencioso: no queremos romper la operación principal por limpieza
-    }
+    await this.minio.removeObject(objectKey);
   }
 }

@@ -1,11 +1,18 @@
 // src/common/utils/prisma-filter.util.ts
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, HttpException } from '@nestjs/common';
 
 export function handlePrismaFilterError(err: unknown): never {
-  const message =
+  // Las excepciones que ya lanzamos a propósito (whitelist de filtros,
+  // includes inválidos) deben propagarse tal cual: si se reemplazan por
+  // un mensaje genérico, el cliente pierde la lista de campos permitidos.
+  if (err instanceof HttpException) throw err;
+
+  const raw =
     typeof err === 'object' && err !== null && 'message' in err
-      ? String((err as any).message ?? '')
-      : '';
+      ? (err as { message?: unknown }).message
+      : undefined;
+
+  const message = typeof raw === 'string' ? raw : '';
 
   const isPrismaFilterError =
     message.includes('Unknown argument') || message.includes('Argument');

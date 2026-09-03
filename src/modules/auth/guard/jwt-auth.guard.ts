@@ -11,17 +11,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return super.canActivate(context);
   }
 
-  handleRequest(err: any, user: any) {
-    // console.log('err => ', err);
-    // console.log('user => ', user);
-
+  // ===================================================================================
+  handleRequest<TUser>(err: unknown, user: TUser): TUser {
     if (err || !user) {
-      console.log('err => ', err);
-      console.log('user => ', user);
-
       throw new UnauthorizedException('Token inválido o expirado');
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+
     return user;
   }
 }

@@ -20,6 +20,10 @@ export const CreateImagenProductoSchema = z
 
     esPrincipal: z.boolean().optional(),
     esHover: z.boolean().optional(),
+
+    // Color al que pertenece la imagen. null / ausente = imagen genérica,
+    // se muestra para cualquier color del producto.
+    color_id: z.coerce.number().int().positive().nullable().optional(),
   })
   .superRefine((data, ctx) => {
     // ❌ no puede ser principal y hover a la vez

@@ -1,15 +1,12 @@
 //* src/common/utils/paginate-response.ts
 
+import { ApiResponse, CoreResponse } from './response.util';
+
 // ===================================================================================
-export interface PaginatedResponse<T> {
-  data: T[];
-  meta: {
-    page: number;
-    limit: number | null;
-    total: number;
-    totalPages: number | null;
-  };
-}
+// Se mantiene por compatibilidad de imports. El shape real lo define
+// CoreResponse.paginated (response.util.ts).
+// ===================================================================================
+export type PaginatedResponse<T> = ApiResponse<T[]>;
 
 // ===================================================================================
 export function buildPaginatedResponse<T>(
@@ -17,16 +14,7 @@ export function buildPaginatedResponse<T>(
   total: number,
   page: number,
   limit?: number,
+  message = 'Listado obtenido correctamente',
 ): PaginatedResponse<T> {
-  const totalPages = limit && limit > 0 ? Math.ceil(total / limit) : null;
-
-  return {
-    data,
-    meta: {
-      page,
-      limit: limit ?? null,
-      total,
-      totalPages,
-    },
-  };
+  return CoreResponse.paginated(message, data, total, page, limit);
 }

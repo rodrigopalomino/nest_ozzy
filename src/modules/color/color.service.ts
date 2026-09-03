@@ -1,12 +1,16 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma as PrismaClient } from '@prisma/client';
 
 import { QueryOptionsSchemaType } from 'src/common/schema/query-options.schema';
-import { prismaQueryBuilder } from 'src/common/utils/prisma-query-builder';
+import {
+  prismaQueryBuilder,
+  resolveLimit,
+} from 'src/common/utils/prisma-query-builder';
 import { buildPaginatedResponse } from 'src/common/utils/paginate-response';
 import { handlePrismaFilterError } from 'src/common/utils/prisma-filter.util';
 import { CoreResponse } from 'src/common/utils/response.util';
@@ -78,10 +82,20 @@ export class ColorService {
       const query = prismaQueryBuilder<
         PrismaClient.ColorWhereInput,
         PrismaClient.ColorInclude
-      >(options, []); // no includes por defecto
+      >(options, {
+        allowedIncludes: [],
+        allowedFilters: [
+          'id',
+          'nombre',
+          'hex',
+          'activo',
+          'createdAt',
+          'updatedAt',
+        ],
+      }); // no includes por defecto
 
       const page = options.page ? Number(options.page) : 1;
-      const limit = options.limit ? Number(options.limit) : undefined;
+      const limit = resolveLimit(options);
 
       const total = await this.prismaService.color.count({
         where: query.where,
@@ -93,5 +107,32 @@ export class ColorService {
     } catch (err) {
       return handlePrismaFilterError(err);
     }
+  }
+  // ===================================================================================
+  // Borrado definitivo. Si el color está en uso se bloquea: borrarla
+  // arrastraría variantes por cascada. Para retirarla del catálogo sin
+  // perder datos, basta con activo: false.
+  async deleteColor(id: number) {
+    const registro = await this.prismaService.color.findUnique({
+      where: { id },
+      select: { id: true, _count: { select: { variantes: true } } },
+    });
+
+    if (!registro) throw new NotFoundException('Color no encontrado');
+
+    const enUso = registro._count.variantes;
+
+    if (enUso > 0) {
+      throw new ConflictException({
+        message:
+          'El color está en uso y no puede eliminarse. ' +
+          'Desactívala con activo: false para ocultarla del catálogo.',
+        variantes: enUso,
+      });
+    }
+
+    await this.prismaService.color.delete({ where: { id } });
+
+    return CoreResponse.deleted('Color eliminado correctamente');
   }
 }

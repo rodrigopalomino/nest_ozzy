@@ -1,15 +1,20 @@
-// src/producto/producto.controller.ts
+// src/modules/producto/producto.controller.ts
 import {
   Body,
   Controller,
+  DefaultValuePipe,
   Delete,
   Get,
   Param,
+  ParseBoolPipe,
   ParseIntPipe,
+  Patch,
   Post,
   Put,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+import { AccionAuditoria, RolUsuario } from '@prisma/client';
 import { ProductoService } from './producto.service';
 import { UpdatePrecioProductoDto } from './dto/updatePrecioProducto.dto';
 import { CreateVideoProductoDto } from './dto/createVideoProducto.dto';
@@ -19,47 +24,102 @@ import { UpdateVarianteProductoDto } from './dto/updateVarianteProducto.dto';
 import { ConnectRelacionesProductoDto } from './dto/connectRelacionesProducto.dto';
 import { DisconnectRelacionesProductoDto } from './dto/disconnectRelacionesProducto.dto';
 import { SetProductoRelacionesDto } from './dto/set-producto-relaciones.dto';
-import { QueryOptionsSchemaType } from 'src/common/schema/query-options.schema';
+import { QueryOptionsDto } from 'src/common/dto/query-options.dto';
 import { CreateProductoDto } from './dto/createProductoDto';
+import { UpdateProductoDto } from './dto/updateProducto.dto';
+import { JwtAuthGuard } from 'src/modules/auth/guard/jwt-auth.guard';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { Auditar } from 'src/common/interceptors/auditoria.interceptor';
 
-// ⛔️ Por ahora NO lo usas. Luego lo activas.
-// import { AuthGuard } from 'src/auth/auth.guard';
-
-@Controller()
+// ===================================================================================
+// Lectura pública (la consume el catálogo del front).
+// Toda escritura exige sesión con rol ADMIN o STAFF.
+// ===================================================================================
+@Controller('producto')
 export class ProductoController {
   constructor(private readonly productoService: ProductoService) {}
 
-  // @UseGuards(AuthGuard)
-  // @Get('producto')
-  // async getProductos(
-  //   @Query('q') q?: string,
-  //   @Query('estado') estado?: EstadoProducto,
-  //   @Query('page') page?: string,
-  //   @Query('limit') limit?: string,
-  // ) {
-  //   return this.productoService.getProductos({
-  //     q,
-  //     estado,
-  //     page: page ? Number(page) : undefined,
-  //     limit: limit ? Number(limit) : undefined,
-  //   });
-  // }
-
-  @Post('producto')
-  async adminCreate(@Body() body: CreateProductoDto) {
-    return this.productoService.createProducto(body);
-  }
-
   // ===================================================================================
-  @Get('producto')
-  getProductos(@Query() options: QueryOptionsSchemaType) {
+  @Get()
+  getProductos(@Query() options: QueryOptionsDto) {
     return this.productoService.getProductos(options);
   }
 
   // ===================================================================================
+  @Get(':producto_id')
+  getProducto(
+    @Param('producto_id', ParseIntPipe) producto_id: number,
+    @Query() options: QueryOptionsDto,
+  ) {
+    return this.productoService.getProducto(producto_id, options);
+  }
 
   // ===================================================================================
-  @Put('producto/:id/precio')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.CREAR)
+  @Post()
+  create(@Body() body: CreateProductoDto) {
+    return this.productoService.createProducto(body);
+  }
+
+  // ===================================================================================
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.ACTUALIZAR)
+  @Patch(':id')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProductoDto,
+  ) {
+    return this.productoService.updateProducto(id, dto);
+  }
+
+  // ===================================================================================
+  // Papelera: lista lo eliminado y permite recuperarlo. Va antes de las
+  // rutas con :id para que "papelera" no se interprete como un id.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Get('papelera/listar')
+  papelera() {
+    return this.productoService.listarPapelera();
+  }
+
+  // ===================================================================================
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.CREAR)
+  @Post(':id/restaurar')
+  restaurar(@Param('id', ParseIntPipe) id: number) {
+    return this.productoService.restaurarProducto(id);
+  }
+
+  // ===================================================================================
+  // Por defecto mueve a la papelera (reversible y conserva los leads).
+  // Con ?definitivo=true borra de verdad, y si hay leads exige además
+  // ?confirmar=true.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN)
+  @Auditar('producto', AccionAuditoria.ELIMINAR)
+  @Delete(':id')
+  delete(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('confirmar', new DefaultValuePipe(false), ParseBoolPipe)
+    confirmar: boolean,
+    @Query('definitivo', new DefaultValuePipe(false), ParseBoolPipe)
+    definitivo: boolean,
+  ) {
+    return this.productoService.deleteProducto(id, { confirmar, definitivo });
+  }
+
+  // ===================================================================================
+  // Precio / oferta
+  // ===================================================================================
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.ACTUALIZAR)
+  @Put(':id/precio')
   upsertPrecio(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePrecioProductoDto,
@@ -67,14 +127,21 @@ export class ProductoController {
     return this.productoService.upsertPrecioProducto(id, dto);
   }
 
-  @Delete('producto/:id/precio')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.ELIMINAR)
+  @Delete(':id/precio')
   deletePrecio(@Param('id', ParseIntPipe) id: number) {
     return this.productoService.deletePrecioProducto(id);
   }
 
   // ===================================================================================
-  // ✅ Crear video
-  @Post('producto/:id/videos')
+  // Videos
+  // ===================================================================================
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.CREAR)
+  @Post(':id/videos')
   createVideo(
     @Param('id', ParseIntPipe) productoId: number,
     @Body() dto: CreateVideoProductoDto,
@@ -82,18 +149,22 @@ export class ProductoController {
     return this.productoService.createVideoProducto(productoId, dto);
   }
 
-  // ✅ Editar video
-  @Put('producto/:id/videos/:videoId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.ACTUALIZAR)
+  @Put(':id/videos/:videoId')
   updateVideo(
-    @Param('id') productoId: number,
-    @Param('videoId') videoId: number,
+    @Param('id', ParseIntPipe) productoId: number,
+    @Param('videoId', ParseIntPipe) videoId: number,
     @Body() dto: UpdateVideoProductoDto,
   ) {
     return this.productoService.updateVideoProducto(productoId, videoId, dto);
   }
 
-  // ✅ Eliminar video
-  @Delete('producto/:id/videos/:videoId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.ELIMINAR)
+  @Delete(':id/videos/:videoId')
   deleteVideo(
     @Param('id', ParseIntPipe) productoId: number,
     @Param('videoId', ParseIntPipe) videoId: number,
@@ -101,8 +172,13 @@ export class ProductoController {
     return this.productoService.deleteVideoProducto(productoId, videoId);
   }
 
-  // ✅ Crear variante
-  @Post('producto/:id/variantes')
+  // ===================================================================================
+  // Variantes
+  // ===================================================================================
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.CREAR)
+  @Post(':id/variantes')
   createVariante(
     @Param('id', ParseIntPipe) productoId: number,
     @Body() dto: CreateVarianteProductoDto,
@@ -110,8 +186,10 @@ export class ProductoController {
     return this.productoService.createVarianteProducto(productoId, dto);
   }
 
-  // ✅ Editar variante
-  @Put('producto/:id/variantes/:varianteId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.ACTUALIZAR)
+  @Put(':id/variantes/:varianteId')
   updateVariante(
     @Param('id', ParseIntPipe) productoId: number,
     @Param('varianteId', ParseIntPipe) varianteId: number,
@@ -124,8 +202,10 @@ export class ProductoController {
     );
   }
 
-  // ✅ Eliminar variante
-  @Delete('producto/:id/variantes/:varianteId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.ELIMINAR)
+  @Delete(':id/variantes/:varianteId')
   deleteVariante(
     @Param('id', ParseIntPipe) productoId: number,
     @Param('varianteId', ParseIntPipe) varianteId: number,
@@ -133,20 +213,27 @@ export class ProductoController {
     return this.productoService.deleteVarianteProducto(productoId, varianteId);
   }
 
-  // ✅ REEMPLAZA TODO (SET)
-  @Put('producto/:id/relaciones')
+  // ===================================================================================
+  // Relaciones (categorías / colecciones / insignias)
+  // ===================================================================================
+
+  // Reemplaza todo el set de relaciones
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.ACTUALIZAR)
+  @Put(':id/relaciones')
   setRelaciones(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SetProductoRelacionesDto,
   ) {
-    console.log('id => ', id);
-    console.log('dto => ', dto);
-
     return this.productoService.setRelacionesProducto(id, dto);
   }
 
-  // ✅ "CREAR" relaciones = CONECTAR (ADD)
-  @Put('producto/:id/relaciones/connect')
+  // Añade relaciones
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.ACTUALIZAR)
+  @Put(':id/relaciones/connect')
   connectRelaciones(
     @Param('id', ParseIntPipe) productoId: number,
     @Body() dto: ConnectRelacionesProductoDto,
@@ -154,20 +241,15 @@ export class ProductoController {
     return this.productoService.connectRelacionesProducto(productoId, dto);
   }
 
-  // ✅ "ELIMINAR" relaciones = DESCONECTAR (REMOVE)
-  @Put('producto/:id/relaciones/disconnect')
+  // Quita relaciones
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolUsuario.ADMIN, RolUsuario.STAFF)
+  @Auditar('producto', AccionAuditoria.ACTUALIZAR)
+  @Put(':id/relaciones/disconnect')
   disconnectRelaciones(
     @Param('id', ParseIntPipe) productoId: number,
     @Body() dto: DisconnectRelacionesProductoDto,
   ) {
     return this.productoService.disconnectRelacionesProducto(productoId, dto);
-  }
-
-  @Get('producto/:producto_id')
-  getTurno(
-    @Param('producto_id', ParseIntPipe) producto_id: number,
-    @Query() options: QueryOptionsSchemaType,
-  ) {
-    return this.productoService.getProducto(producto_id, options);
   }
 }

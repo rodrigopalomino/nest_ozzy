@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { fechaIsoNullish } from 'src/common/schema/fecha.schema';
 
 export const CreateColeccionSchema = z.object({
   nombre: z.string().trim().min(1),
@@ -8,8 +9,10 @@ export const CreateColeccionSchema = z.object({
   imagenPortada: z.string().trim().optional().nullable(),
 
   // acepta string (ISO) o Date, ambos opcionales y nullable
-  iniciaEn: z.union([z.string().datetime(), z.date()]).optional().nullable(),
-  terminaEn: z.union([z.string().datetime(), z.date()]).optional().nullable(),
+  // Cadena ISO: un z.date() no se puede representar en JSON Schema y
+  // rompe la generación de la documentación OpenAPI.
+  iniciaEn: fechaIsoNullish,
+  terminaEn: fechaIsoNullish,
 
   // opcional porque en DB tiene default(true)
   activo: z.boolean().optional(),

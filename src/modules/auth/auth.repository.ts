@@ -9,16 +9,19 @@ export class AuthRepository {
   constructor(private readonly prismaService: PrismaService) {}
 
   // ===================================================================================
+  // Incluye tokenVersion: el token firmado la lleva para poder invalidar
+  // sesiones sin mantener una lista negra.
   findUnique(username: string) {
     return this.prismaService.usuario.findUnique({
-      where: {
-        username,
+      where: { username },
+      select: {
+        id: true,
+        username: true,
+        password: true,
+        rol: true,
+        activo: true,
+        tokenVersion: true,
       },
     });
   }
-
-  // ===================================================================================
-  // create(data: Prisma.userCreateInput) {
-  //   return this.prismaService.user.create({ data });
-  // }
 }

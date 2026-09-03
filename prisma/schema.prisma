@@ -36,12 +36,51 @@ enum RolUsuario {
   STAFF
 }
 
+enum EstadoLead {
+  NUEVO
+  CONTACTADO
+  VENDIDO
+  PERDIDO
+}
+
+enum CanalNotificacion {
+  EMAIL
+}
+
+enum EstadoNotificacion {
+  PENDIENTE
+  ENVIADA
+  FALLIDA
+}
+
+enum TipoNotificacion {
+  STOCK_DISPONIBLE
+  BIENVENIDA
+  NOVEDADES
+  OFERTA
+}
+
+enum AccionAuditoria {
+  CREAR
+  ACTUALIZAR
+  ELIMINAR
+}
+
 model Usuario {
   id       Int        @id @default(autoincrement())
   username String     @unique
   password String     @map("password_hash")
   activo   Boolean    @default(true)
   rol      RolUsuario @default(ADMIN)
+
+  ultimoAcceso DateTime?
+
+  // Se incrementa al cerrar sesión en todos los dispositivos o al cambiar
+  // la contraseña: invalida los tokens emitidos antes.
+  tokenVersion Int @default(0)
+
+  refreshTokens RefreshToken[]
+  auditorias    Auditoria[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -50,14 +89,92 @@ model Usuario {
   @@map("usuario")
 }
 
+// ===================================================================================
+// Sesiones de administración de larga duración. Se guarda sólo el hash del
+// token, así una filtración de la base no permite reutilizarlos.
+model RefreshToken {
+  id String @id @default(uuid())
+
+  usuario_id Int
+  usuario    Usuario @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+
+  tokenHash String   @unique
+  expiraEn  DateTime
+  revocadoEn DateTime?
+
+  userAgent String?
+  ip        String?
+
+  createdAt DateTime @default(now())
+
+  @@index([usuario_id, revocadoEn])
+  @@index([expiraEn])
+  @@map("refresh_token")
+}
+
+// ===================================================================================
+// Clientes de la tienda, autenticados con Google. Están separados de
+// Usuario a propósito: tener cuenta de Google no da acceso al admin.
+model Cliente {
+  id Int @id @default(autoincrement())
+
+  googleId String  @unique @map("google_id")
+  email    String  @unique
+  nombre   String
+  avatar   String?
+
+  activo Boolean @default(true)
+
+  // Consentimiento para novedades y ofertas. Los avisos de stock que el
+  // propio cliente solicita no dependen de este campo.
+  aceptaNovedades Boolean @default(false)
+
+  ultimoAcceso DateTime?
+
+  suscripciones  SuscripcionStock[]
+  favoritos      Favorito[]
+  notificaciones Notificacion[]
+  carritos       Carrito[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo])
+  @@map("cliente")
+}
+
 model Producto {
   id          Int            @id @default(autoincrement())
   nombre      String
   slug        String         @unique
-  descripcion String?
+  descripcion String?        @db.Text
   estado      EstadoProducto @default(ACTIVO)
 
   precioBase Decimal? @db.Decimal(10, 2)
+
+  // Precio efectivo más bajo entre las variantes, recalculado al guardar.
+  // Permite ordenar y filtrar por precio real (con ofertas) desde SQL,
+  // algo imposible con precioBase.
+  precioDesde Decimal? @db.Decimal(10, 2)
+
+  // Curaduría del home: destacado + orden manual ascendente.
+  destacado Boolean @default(false)
+  orden     Int     @default(0)
+
+  // Métricas: vistas junto a los leads dan la tasa de conversión.
+  vistas Int @default(0)
+
+  // SEO por producto; si están vacíos el front usa nombre y descripción.
+  metaTitulo      String?
+  metaDescripcion String? @db.Text
+  ogImagen        String?
+
+  // Control de concurrencia optimista: dos administradores editando a la
+  // vez ya no se pisan en silencio.
+  version Int @default(0)
+
+  // Soft delete: DELETE marca la fecha y el catálogo lo excluye.
+  deletedAt DateTime?
 
   imagenes      ImagenProducto[]
   videos        VideoProducto[]
@@ -71,8 +188,20 @@ model Producto {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  suscripciones SuscripcionStock[]
+  favoritos     Favorito[]
+  guiaTallas    GuiaTallas?
+
+  relacionadosDe ProductoRelacionado[] @relation("productoOrigen")
+  relacionadosA  ProductoRelacionado[] @relation("productoRelacionado")
+
   @@index([estado])
   @@index([nombre])
+  @@index([estado, destacado, orden])
+  @@index([estado, precioDesde])
+  @@index([estado, vistas])
+  @@index([deletedAt])
+  @@fulltext([nombre, descripcion])
   @@map("producto")
 }
 
@@ -81,18 +210,40 @@ model ImagenProducto {
   producto_id Int
   producto    Producto @relation(fields: [producto_id], references: [id], onDelete: Cascade)
 
+  // Imagen asociada a un color concreto del producto.
+  // null = imagen genérica, se muestra para cualquier color.
+  color_id Int?
+  color    Color? @relation(fields: [color_id], references: [id], onDelete: SetNull)
+
   url   String
   alt   String?
   orden Int     @default(0)
 
+  // Miniaturas WebP generadas al subir. Evitan servir el JPG original
+  // del móvil en las tarjetas del catálogo.
+  urlSm String?
+  urlMd String?
+  urlLg String?
+
+  // Dimensiones reales: next/image las necesita para reservar el espacio
+  // y no provocar saltos de layout (CLS).
+  ancho Int?
+  alto  Int?
+
+  // Placeholder base64 diminuto para el blurDataURL de next/image.
+  blurData String? @db.Text
+
+  // esPrincipal / esHover son únicos por (producto, color):
+  // cada color tiene su propia portada y su propia imagen de hover.
   esPrincipal Boolean @default(false)
   esHover     Boolean @default(false)
 
   createdAt DateTime @default(now())
 
   @@index([producto_id, orden])
-  @@index([producto_id, esPrincipal])
-  @@index([producto_id, esHover])
+  @@index([producto_id, color_id, orden])
+  @@index([producto_id, color_id, esPrincipal])
+  @@index([producto_id, color_id, esHover])
   @@map("imagen_producto")
 }
 
@@ -118,7 +269,13 @@ model Categoria {
   slug   String  @unique
   activo Boolean @default(true)
 
-  productos ProductoCategoria[]
+  orden Int @default(0)
+
+  metaTitulo      String?
+  metaDescripcion String? @db.Text
+
+  productos  ProductoCategoria[]
+  guiaTallas GuiaTallas[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -136,6 +293,12 @@ model Coleccion {
   iniciaEn      DateTime?
   terminaEn     DateTime?
   activo        Boolean   @default(true)
+
+  destacada Boolean @default(false)
+  orden     Int     @default(0)
+
+  metaTitulo      String?
+  metaDescripcion String? @db.Text
 
   productos ProductoColeccion[]
 
@@ -195,6 +358,7 @@ model Color {
   activo Boolean @default(true)
 
   variantes VarianteProducto[]
+  imagenes  ImagenProducto[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -224,6 +388,8 @@ model VarianteProducto {
   activo Boolean @default(true)
 
   leadsWhatsApp LeadWhatsApp[]
+  suscripciones SuscripcionStock[]
+  itemsCarrito  CarritoItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -292,12 +458,300 @@ model LeadWhatsApp {
   variante    VarianteProducto? @relation(fields: [variante_id], references: [id], onDelete: SetNull)
 
   telefono String?
-  mensaje  String
+  mensaje  String     @db.Text
   origen   OrigenLead @default(DETALLE_PRODUCTO)
 
+  // Seguimiento comercial: convierte la lista de leads en un CRM mínimo.
+  estado EstadoLead @default(NUEVO)
+  nota   String?    @db.Text
+
+  // Precio que veía el visitante al escribir. Si luego cambia la oferta,
+  // el histórico conserva lo que se le prometió.
+  precioMostrado Decimal? @db.Decimal(10, 2)
+
+  // Huella para deduplicar: hash de (producto, variante, ip). Un mismo
+  // visitante pulsando dos veces no cuenta como dos leads.
+  huella String?
+
+  cupon_id Int?
+  cupon    Cupon? @relation(fields: [cupon_id], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([producto_id, createdAt])
   @@index([origen, createdAt])
+  @@index([estado, createdAt])
+  @@index([huella, createdAt])
   @@map("lead")
+}
+
+// ===================================================================================
+// Aviso de reposición: el visitante deja su correo y se le notifica cuando
+// la variante vuelve a tener stock.
+model SuscripcionStock {
+  id Int @id @default(autoincrement())
+
+  producto_id Int
+  producto    Producto @relation(fields: [producto_id], references: [id], onDelete: Cascade)
+
+  variante_id Int?
+  variante    VarianteProducto? @relation(fields: [variante_id], references: [id], onDelete: Cascade)
+
+  cliente_id Int?
+  cliente    Cliente? @relation(fields: [cliente_id], references: [id], onDelete: SetNull)
+
+  // Se guarda el email aunque haya cliente: si el cliente se borra, el
+  // aviso pendiente sigue siendo entregable.
+  email String
+
+  // Token de baja: aleatorio por suscripción y almacenado sólo como hash.
+  // El valor en claro viaja únicamente en el correo del suscriptor, así
+  // que quien suscriba el correo de otra persona no obtiene un token con
+  // el que cancelar su aviso.
+  tokenBajaHash String @unique
+
+  notificadoEn DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([variante_id, email])
+  @@index([producto_id, notificadoEn])
+  @@index([email])
+  @@map("suscripcion_stock")
+}
+
+// ===================================================================================
+// Lista de deseos. Funciona sin login mediante `dispositivo` (id generado
+// en el navegador) y se asocia al cliente cuando entra con Google.
+model Favorito {
+  id Int @id @default(autoincrement())
+
+  producto_id Int
+  producto    Producto @relation(fields: [producto_id], references: [id], onDelete: Cascade)
+
+  cliente_id Int?
+  cliente    Cliente? @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+
+  dispositivo String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([producto_id, cliente_id])
+  @@unique([producto_id, dispositivo])
+  @@index([cliente_id])
+  @@index([dispositivo])
+  @@map("favorito")
+}
+
+// ===================================================================================
+// Cola de notificaciones. Se persisten para poder reintentar los envíos
+// fallidos y no depender de que el proceso siga vivo.
+model Notificacion {
+  id Int @id @default(autoincrement())
+
+  cliente_id Int?
+  cliente    Cliente? @relation(fields: [cliente_id], references: [id], onDelete: SetNull)
+
+  email String
+
+  tipo   TipoNotificacion
+  canal  CanalNotificacion @default(EMAIL)
+  estado EstadoNotificacion @default(PENDIENTE)
+
+  asunto  String
+  cuerpo  String @db.Text
+
+  intentos Int     @default(0)
+  error    String? @db.Text
+
+  enviadaEn DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([estado, createdAt])
+  @@index([email])
+  @@map("notificacion")
+}
+
+// ===================================================================================
+// Ajustes editables sin desplegar: número de WhatsApp, horario, copys.
+model Configuracion {
+  clave       String  @id
+  valor       String  @db.Text
+  descripcion String?
+
+  updatedAt DateTime @updatedAt
+
+  @@map("configuracion")
+}
+
+// ===================================================================================
+// Bitácora de cambios del admin: quién tocó qué precio y cuándo.
+model Auditoria {
+  id Int @id @default(autoincrement())
+
+  usuario_id Int?
+  usuario    Usuario? @relation(fields: [usuario_id], references: [id], onDelete: SetNull)
+
+  // Nombre del usuario en el momento del cambio: sobrevive a su borrado.
+  usuarioNombre String?
+
+  entidad   String
+  entidadId String
+  accion    AccionAuditoria
+
+  // Sólo los campos que cambiaron, como JSON { campo: { antes, despues } }.
+  cambios String? @db.Text
+
+  ip String?
+
+  createdAt DateTime @default(now())
+
+  @@index([entidad, entidadId, createdAt])
+  @@index([usuario_id, createdAt])
+  @@map("auditoria")
+}
+
+// ===================================================================================
+// Histórico de slugs. Al renombrar un producto, el slug viejo sigue
+// resolviendo en lugar de devolver 404 a los enlaces ya compartidos.
+model Redireccion {
+  id Int @id @default(autoincrement())
+
+  entidad   String
+  slugViejo String
+  slugNuevo String
+
+  createdAt DateTime @default(now())
+
+  @@unique([entidad, slugViejo])
+  @@index([slugNuevo])
+  @@map("redireccion")
+}
+
+// ===================================================================================
+// Cupones. El cierre es por WhatsApp, así que el cupón viaja en el lead
+// para que se aplique al confirmar la venta.
+model Cupon {
+  id Int @id @default(autoincrement())
+
+  codigo String @unique
+
+  // Descuento porcentual o importe fijo; se usa exactamente uno.
+  porcentaje Int?
+  montoFijo  Decimal? @db.Decimal(10, 2)
+
+  iniciaEn  DateTime?
+  terminaEn DateTime?
+
+  usoMaximo Int?
+  usos      Int  @default(0)
+
+  activo Boolean @default(true)
+
+  leads LeadWhatsApp[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo, codigo])
+  @@map("cupon")
+}
+
+// ===================================================================================
+// Guía de tallas en centímetros. Reduce las preguntas por WhatsApp.
+// Se asocia a una categoría o directamente a un producto.
+model GuiaTallas {
+  id Int @id @default(autoincrement())
+
+  categoria_id Int?
+  categoria    Categoria? @relation(fields: [categoria_id], references: [id], onDelete: Cascade)
+
+  producto_id Int?      @unique
+  producto    Producto? @relation(fields: [producto_id], references: [id], onDelete: Cascade)
+
+  nombre String
+  // Filas y columnas como JSON: { columnas: [...], filas: [[...]] }.
+  // La forma varía por categoría, así que no se normaliza en tablas.
+  datos String @db.Text
+  nota   String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoria_id])
+  @@map("guia_tallas")
+}
+
+// ===================================================================================
+// Productos relacionados elegidos a mano, además de los automáticos por
+// categoría.
+model ProductoRelacionado {
+  producto_id    Int
+  relacionado_id Int
+
+  producto    Producto @relation("productoOrigen", fields: [producto_id], references: [id], onDelete: Cascade)
+  relacionado Producto @relation("productoRelacionado", fields: [relacionado_id], references: [id], onDelete: Cascade)
+
+  orden Int @default(0)
+
+  @@id([producto_id, relacionado_id])
+  @@index([relacionado_id])
+  @@map("producto_relacionado")
+}
+
+// ===================================================================================
+// Carrito
+//
+// No exige cuenta: hasta que el cliente inicia sesión, el carrito se
+// identifica con el mismo id de dispositivo que usan los favoritos, y al
+// entrar con Google se adopta. Así el carrito sobrevive recargas sin
+// obligar a registrarse antes de elegir.
+//
+// No es un pedido: la venta se cierra por WhatsApp, así que aquí no hay
+// estados de pago ni reserva de stock.
+// ===================================================================================
+model Carrito {
+  id Int @id @default(autoincrement())
+
+  cliente_id Int?
+  cliente    Cliente? @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+
+  dispositivo String?
+
+  items CarritoItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Un carrito abierto por identidad: o de un cliente, o de un dispositivo.
+  @@unique([cliente_id])
+  @@unique([dispositivo])
+  @@index([updatedAt])
+  @@map("carrito")
+}
+
+// ===================================================================================
+model CarritoItem {
+  id Int @id @default(autoincrement())
+
+  carrito_id Int
+  carrito    Carrito @relation(fields: [carrito_id], references: [id], onDelete: Cascade)
+
+  // La línea apunta a la variante, no al producto: la talla y el color son
+  // parte de lo que se pide, y el precio puede diferir por variante.
+  variante_id Int
+  variante    VarianteProducto @relation(fields: [variante_id], references: [id], onDelete: Cascade)
+
+  cantidad Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // La misma variante no se repite: se suma la cantidad.
+  @@unique([carrito_id, variante_id])
+  @@index([variante_id])
+  @@map("carrito_item")
 }

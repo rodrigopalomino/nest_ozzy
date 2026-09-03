@@ -1,12 +1,16 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma as PrismaClient } from '@prisma/client';
 
 import { QueryOptionsSchemaType } from 'src/common/schema/query-options.schema';
-import { prismaQueryBuilder } from 'src/common/utils/prisma-query-builder';
+import {
+  prismaQueryBuilder,
+  resolveLimit,
+} from 'src/common/utils/prisma-query-builder';
 import { buildPaginatedResponse } from 'src/common/utils/paginate-response';
 import { handlePrismaFilterError } from 'src/common/utils/prisma-filter.util';
 import { CoreResponse } from 'src/common/utils/response.util';
@@ -76,10 +80,13 @@ export class TallaService {
       const query = prismaQueryBuilder<
         PrismaClient.TallaWhereInput,
         PrismaClient.TallaInclude
-      >(options, ['variantes']); // relación en el modelo
+      >(options, {
+        allowedIncludes: ['variantes'],
+        allowedFilters: ['id', 'etiqueta', 'activo', 'createdAt', 'updatedAt'],
+      }); // relación en el modelo
 
       const page = options.page ? Number(options.page) : 1;
-      const limit = options.limit ? Number(options.limit) : undefined;
+      const limit = resolveLimit(options);
 
       const total = await this.prismaService.talla.count({
         where: query.where,
@@ -91,5 +98,32 @@ export class TallaService {
     } catch (err) {
       return handlePrismaFilterError(err);
     }
+  }
+  // ===================================================================================
+  // Borrado definitivo. Si la talla está en uso se bloquea: borrarla
+  // arrastraría variantes por cascada. Para retirarla del catálogo sin
+  // perder datos, basta con activo: false.
+  async deleteTalla(id: number) {
+    const registro = await this.prismaService.talla.findUnique({
+      where: { id },
+      select: { id: true, _count: { select: { variantes: true } } },
+    });
+
+    if (!registro) throw new NotFoundException('Talla no encontrada');
+
+    const enUso = registro._count.variantes;
+
+    if (enUso > 0) {
+      throw new ConflictException({
+        message:
+          'La talla está en uso y no puede eliminarse. ' +
+          'Desactívala con activo: false para ocultarla del catálogo.',
+        variantes: enUso,
+      });
+    }
+
+    await this.prismaService.talla.delete({ where: { id } });
+
+    return CoreResponse.deleted('Talla eliminada correctamente');
   }
 }

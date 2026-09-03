@@ -96,21 +96,39 @@ async function main() {
   });
 
   // =========================
-  // USUARIO ADMIN (ARGON2 ✅)
+  // USUARIO ADMIN
   // =========================
-  const adminPasswordHash = await argon2.hash('admin');
+  // La contraseña se toma de ADMIN_PASSWORD. Antes estaba fijada a 'admin'
+  // en el código: cualquiera que conociera el repositorio podía entrar al
+  // panel de una instalación recién desplegada.
+  const adminUsername = process.env.ADMIN_USERNAME ?? 'admin';
+  const adminPassword = process.env.ADMIN_PASSWORD;
 
-  await prisma.usuario.createMany({
-    data: [
-      {
-        username: 'admin',
-        password: adminPasswordHash, // 🔐 HASH ARGON2
+  const yaExiste = await prisma.usuario.findUnique({
+    where: { username: adminUsername },
+    select: { id: true },
+  });
+
+  if (yaExiste) {
+    console.log(`ℹ️  El usuario "${adminUsername}" ya existe, no se modifica`);
+  } else if (!adminPassword) {
+    console.warn(
+      '⚠️  No se creó el usuario administrador: falta ADMIN_PASSWORD en el entorno.\n' +
+        '    Añádela al .env y vuelve a ejecutar el seed:\n' +
+        '    ADMIN_PASSWORD="una-contraseña-larga" npm run seed',
+    );
+  } else {
+    await prisma.usuario.create({
+      data: {
+        username: adminUsername,
+        password: await argon2.hash(adminPassword),
         activo: true,
         rol: RolUsuario.ADMIN,
       },
-    ],
-    skipDuplicates: true,
-  });
+    });
+
+    console.log(`✅ Usuario administrador "${adminUsername}" creado`);
+  }
 
   console.log('✅ Seed OK');
   await prisma.$disconnect();

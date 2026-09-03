@@ -1,12 +1,16 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { QueryOptionsSchemaType } from 'src/common/schema/query-options.schema';
 import { Prisma } from '@prisma/client';
-import { prismaQueryBuilder } from 'src/common/utils/prisma-query-builder';
+import {
+  prismaQueryBuilder,
+  resolveLimit,
+} from 'src/common/utils/prisma-query-builder';
 import { buildPaginatedResponse } from 'src/common/utils/paginate-response';
 import { handlePrismaFilterError } from 'src/common/utils/prisma-filter.util';
 import { CoreResponse } from 'src/common/utils/response.util';
@@ -78,10 +82,21 @@ export class InsigniaService {
       const query = prismaQueryBuilder<
         Prisma.InsigniaWhereInput,
         Prisma.InsigniaInclude
-      >(options, ['productos']); // relación en el modelo
+      >(options, {
+        allowedIncludes: ['productos'],
+        allowedFilters: [
+          'id',
+          'nombre',
+          'slug',
+          'color',
+          'activo',
+          'createdAt',
+          'updatedAt',
+        ],
+      }); // relación en el modelo
 
       const page = options.page ? Number(options.page) : 1;
-      const limit = options.limit ? Number(options.limit) : undefined;
+      const limit = resolveLimit(options);
 
       const total = await this.prismaService.insignia.count({
         where: query.where,
@@ -93,5 +108,32 @@ export class InsigniaService {
     } catch (err) {
       return handlePrismaFilterError(err);
     }
+  }
+  // ===================================================================================
+  // Borrado definitivo. Si la insignia está en uso se bloquea: borrarla
+  // arrastraría productos por cascada. Para retirarla del catálogo sin
+  // perder datos, basta con activo: false.
+  async deleteInsignia(id: number) {
+    const registro = await this.prismaService.insignia.findUnique({
+      where: { id },
+      select: { id: true, _count: { select: { productos: true } } },
+    });
+
+    if (!registro) throw new NotFoundException('Insignia no encontrada');
+
+    const enUso = registro._count.productos;
+
+    if (enUso > 0) {
+      throw new ConflictException({
+        message:
+          'La insignia está en uso y no puede eliminarse. ' +
+          'Desactívala con activo: false para ocultarla del catálogo.',
+        productos: enUso,
+      });
+    }
+
+    await this.prismaService.insignia.delete({ where: { id } });
+
+    return CoreResponse.deleted('Insignia eliminada correctamente');
   }
 }
